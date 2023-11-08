@@ -6,7 +6,6 @@ const PORT = 3400;
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static('../client/src/assets/images'));
 const myDb = sql.createConnection({
     host: 'bofdbp6sdjcicfrqpkel-mysql.services.clever-cloud.com',
     user: 'ueuxqvm8zpcfzb5i',
