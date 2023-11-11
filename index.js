@@ -7,10 +7,10 @@ const PORT = 3400;
 app.use(cors());
 app.use(express.json());
 const myDb = sql.createConnection({
-    host: 'bofdbp6sdjcicfrqpkel-mysql.services.clever-cloud.com',
-    user: 'ueuxqvm8zpcfzb5i',
-    password: 'gMWT8bUOhjentBAc2ejw',
-    database: 'bofdbp6sdjcicfrqpkel'
+    host: 'localhost',
+    user: 'root',
+    password: 'tan17112003',
+    database: 'souvenir'
 })
 function queryPromise(db, sql, values) {
     return new Promise((resolve, reject) => {
