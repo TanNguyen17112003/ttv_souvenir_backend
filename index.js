@@ -452,7 +452,7 @@ app.post("/order", async (req, res) => {
 
         const idCustomer = customerResult[0].MaKH;
 
-        const insertIntoOrderQuery = "INSERT INTO DonHang (NgayTaoDonHang, MaKH, TrangThai) VALUES (CURDATE(), ?, 'Chưa Xác Nhận')";
+        const insertIntoOrderQuery = "INSERT INTO DonHang (NgayTaoDonHang, MaKH, TrangThai) VALUES (CURDATE(), ?, 'Chưa Thanh Toán')";
         const orderInsertionResult = await queryPromise(myDb, insertIntoOrderQuery, [idCustomer]);
 
         if (!orderInsertionResult.insertId) {
@@ -565,13 +565,101 @@ app.delete("/order/:idOrder", async(req, res) => {
 // api for confirm order
 app.put("/order/:idOrder", async (req, res) => {
     const idOrder = req.params.idOrder;
-    const confirmOrderQuery = "UPDATE DonHang SET TrangThai = 'Đã xác nhận' WHERE MaDonHang = ?";
+    const confirmOrderQuery = "UPDATE DonHang SET TrangThai = 'Đã Thanh Toán' WHERE MaDonHang = ?";
     await myDb.query(confirmOrderQuery, [idOrder], (err, data) => {
         if (err) {
             return res.json(err)
         }
         return res.json(data)
     })
+})
+// api for get status of order
+app.get("/order/status/:idOrder", async (req, res) => {
+    const idOrder = req.params.idOrder;
+    const getStatusOrderQuery = "SELECT TrangThai FROM DonHang WHERE MaDonHang = ?";
+    await myDb.query(getStatusOrderQuery, [idOrder], (err, data) => {
+        if (err) {
+            return res.json(err)
+        }
+        return res.json(data);
+    })
+})
+// api for get all coupons in our system
+app.get("/coupon", async (req, res) => {
+    const getAllCouponsQuery = "SELECT * FROM UuDai LEFT JOIN UuDaiQuyDoi ON MaUuDai = MaUuDaiQuyDoi";
+    await myDb.query(getAllCouponsQuery, (err, data) => {
+        if (err) {
+            return res.json(err)
+        }
+        return res.json(data)
+    })
+})
+// api for get coupon of an user
+app.get("/coupon/:idCustomer", async (req, res) => {
+    const idCustomer = req.params.idOrder;
+    const getCustomerCouponQuery = "SELECT * FROM UuDai JOIN UDThuocKH ON UuDai.MaUuDai = UDThuocKH.MaUuDai WHERE MaKhachHang = ?";
+    await myDb.query(getCustomerCouponQuery, [idCustomer], (err, data) => {
+        if (err) {
+            return res.json(err)
+        }
+        return res.json(data)
+    })
+})
+// api for post voucher information into an order
+app.post("/coupon/:idOrder", async (req, res) => {
+    const idOrder = req.params.idOrder;
+    const {idCoupon, number} = req.body;
+    const insertCouponforOrderQuery = "INSERT INTO UDApDungDH VALUES (?, ?, ?)";
+    await myDb.query(insertCouponforOrderQuery, [idCoupon, idOrder, number], (err, data) => {
+        if (err) {
+            return res.json(err)
+        }
+        return res.json(data)
+    })
+})
+// api for get number of customer having coupon based on idVoucher
+app.get("/coupon/number/:idCoupon", async (req, res) => {
+    const idCoupon = req.params.idCoupon;
+    const getNumberCustomerHavingCouponQuery = "SELECT COUNT(*) AS totalCustomer FROM UDThuocKH WHERE MaUuDai = ?";
+    await myDb.query(getNumberCustomerHavingCouponQuery, [idCoupon], (err, data) => {
+        if (err) {
+            return res.json(err)
+        }
+        return res.json(data)
+    })
+})
+// api for post coupon info into coupon table
+app.post("/coupon/getCoupon/:idCoupon", async (req, res) => {
+    const {email} = req.body;
+    const idCoupon = req.params.idCoupon;
+    const getIdCustomerQuery = "SELECT MaKH FROM KhachHang WHERE Email = ?";
+    const result = await queryPromise(myDb, getIdCustomerQuery, [email]);
+    if (result.length > 0) {
+        const idCustomer = result[0].MaKH;
+        const checkCouponOfCustomerQuery = "SELECT * FROM UDThuocKH WHERE MaUuDai = ? AND MaKhachHang = ?";
+        const result1 = await queryPromise(myDb, checkCouponOfCustomerQuery, [idCoupon, idCustomer]);
+        if (result1.length > 0) {
+            const updateCouponOfCustomerQuery = "UPDATE UDThuocKH SET SoLuong = SoLuong + 1 WHERE MaUuDai = ? AND MaKhachHang = ?";
+            await myDb.query(updateCouponOfCustomerQuery, [idCoupon, idCustomer], (err, data) => {
+                if (err) {
+                    return res.json(err)
+                }
+                return res.json(data);
+            })
+        }
+        else {
+            const insertIntoCouponOfCustomerQuery = "INSERT INTO UDThuocKH VALUES (?, ?, 1)";
+            await myDb.query(insertIntoCouponOfCustomerQuery, [idCoupon, idCustomer], (err, data) => {
+            if (err) {
+                return res.json(err);
+            }
+            return res.json(data);
+        })
+        }
+    }
+    else {
+        console.log("Không tồn tại khách hàng nào với email như thế trong hệ thống")
+    }
 })
 app.listen(PORT, () => {
     console.log('Project is running')
