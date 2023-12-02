@@ -563,16 +563,23 @@ app.delete("/order/:idOrder", async(req, res) => {
     })
 })
 // api for confirm order
-app.put("/order/:idOrder", async (req, res) => {
+app.post("/order/:idOrder/:couponCost", async (req, res) => {
     const idOrder = req.params.idOrder;
-    const confirmOrderQuery = "UPDATE DonHang SET TrangThai = 'Đã Thanh Toán' WHERE MaDonHang = ?";
-    await myDb.query(confirmOrderQuery, [idOrder], (err, data) => {
-        if (err) {
-            return res.json(err)
-        }
-        return res.json(data)
-    })
-})
+    const couponCost = req.params.couponCost;
+    const updateCouponCostQuery = "UPDATE HoaDon SET GiaTriUuDai = ? WHERE MaDonhang = ?";
+    try {  
+        await myDb.query(updateCouponCostQuery, [couponCost, idOrder], async (err, data) => {
+            if (err) {
+                return res.json(err)
+            }
+            const confirmOrderQuery = "UPDATE DonHang SET TrangThai = 'Đã Thanh Toán' WHERE MaDonHang = ?";
+            await myDb.query(confirmOrderQuery, [idOrder]);
+            return res.json({ message: "Cập nhật thành công!" });
+        });
+    } catch (error) {
+        return res.json({ error: error.message });
+    }
+});
 // api for get status of order
 app.get("/order/status/:idOrder", async (req, res) => {
     const idOrder = req.params.idOrder;
@@ -595,15 +602,24 @@ app.get("/coupon", async (req, res) => {
     })
 })
 // api for get coupon of an user
-app.get("/coupon/:idCustomer", async (req, res) => {
-    const idCustomer = req.params.idOrder;
-    const getCustomerCouponQuery = "SELECT * FROM UuDai JOIN UDThuocKH ON UuDai.MaUuDai = UDThuocKH.MaUuDai WHERE MaKhachHang = ?";
-    await myDb.query(getCustomerCouponQuery, [idCustomer], (err, data) => {
-        if (err) {
-            return res.json(err)
-        }
-        return res.json(data)
-    })
+app.get("/coupon/user/:email", async (req, res) => {
+    const email = req.params.email;
+    const getIdCustomerQuery = "SELECT MaKH FROM KhachHang WHERE Email = ?";
+    const result = await queryPromise(myDb, getIdCustomerQuery, [email]);
+    if (result.length > 0) {
+        const idCustomer = result[0].MaKH;
+        const getCustomerCouponQuery = "SELECT * FROM UuDai JOIN UDThuocKH ON UuDai.MaUuDai = UDThuocKH.MaUuDai WHERE UDThuocKH.MaKhachHang = ?";
+        await myDb.query(getCustomerCouponQuery, [idCustomer], (err, data) => {
+            if (err) {
+                return res.json(err)
+            }
+            return res.json(data)
+        })
+    }
+    else {
+        return res.json({err: "Không tìm thấy người dùng với email như vậy trong hệ thống"})
+    }
+   
 })
 // api for post voucher information into an order
 app.post("/coupon/:idOrder", async (req, res) => {
@@ -620,7 +636,7 @@ app.post("/coupon/:idOrder", async (req, res) => {
 // api for get number of customer having coupon based on idVoucher
 app.get("/coupon/number/:idCoupon", async (req, res) => {
     const idCoupon = req.params.idCoupon;
-    const getNumberCustomerHavingCouponQuery = "SELECT COUNT(*) AS totalCustomer FROM UDThuocKH WHERE MaUuDai = ?";
+    const getNumberCustomerHavingCouponQuery = "SELECT COUNT(*) AS totalCustomer FROM UDThuocKH WHERE MaUuDai = ? AND SoLuong > 0";
     await myDb.query(getNumberCustomerHavingCouponQuery, [idCoupon], (err, data) => {
         if (err) {
             return res.json(err)
@@ -640,11 +656,17 @@ app.post("/coupon/getCoupon/:idCoupon", async (req, res) => {
         const result1 = await queryPromise(myDb, checkCouponOfCustomerQuery, [idCoupon, idCustomer]);
         if (result1.length > 0) {
             const updateCouponOfCustomerQuery = "UPDATE UDThuocKH SET SoLuong = SoLuong + 1 WHERE MaUuDai = ? AND MaKhachHang = ?";
-            await myDb.query(updateCouponOfCustomerQuery, [idCoupon, idCustomer], (err, data) => {
+            await myDb.query(updateCouponOfCustomerQuery, [idCoupon, idCustomer], async (err, data) => {
                 if (err) {
                     return res.json(err)
                 }
-                return res.json(data);
+                const updateCouponQuery = "UPDATE UuDai SET SoLuongConLai = SoLuongConLai - 1 WHERE MaUuDai = ?";
+                await myDb.query(updateCouponQuery, [idCoupon], (err, data) => {
+                    if(err) {
+                        return res.json(err)
+                    }
+                    return res.json(data);
+                })
             })
         }
         else {
@@ -661,8 +683,130 @@ app.post("/coupon/getCoupon/:idCoupon", async (req, res) => {
         console.log("Không tồn tại khách hàng nào với email như thế trong hệ thống")
     }
 })
+// api for post coupon info in coupon cost 
+app.post("/coupon/adopt/:idOrder/:idCoupon", async (req, res) => {
+    const idOrder = req.params.idOrder;
+    const idCoupon = req.params.idCoupon;
+    const checkSameCouponForOrderQuery = "SELECT SoLuongSuDung FROM UDApDungDH WHERE MaUuDai = ? AND MaDonHang = ?";
+    const result = await queryPromise(myDb, checkSameCouponForOrderQuery, [idCoupon, idOrder]);
+    if (result.length > 0) {
+        const number = result[0].SoLuongSuDung;
+        const updateCouponForOrderQuery = "UPDATE UDApDungDH SET SoLuongSuDung = ? + 1 WHERE MaUuDai = ? AND MaDonHang = ?";
+        await myDb.query(updateCouponForOrderQuery, [number, idCoupon, idOrder], (err, data) => {
+            if (err) {  
+                return res.json(err)
+            }
+            return res.json(data);
+        })
+    }
+    else {
+        const insertIntoCouponForOrderQuery = "INSERT INTO UDApDungDH VALUES (?, ?, 1)";
+        await myDb.query(insertIntoCouponForOrderQuery, [idCoupon, idOrder], (err, data) => {
+        if (err) {  
+            return res.json(err)
+        }
+        return res.json(data);
+    })
+    }
+})
+// api for get Coupon cost of an order
+app.get("/coupon/couponCost/:idOrder", async (req, res) => {
+    const idOrder = req.params.idOrder;
+    const getCouponCostQuery = "SELECT GiaTriUuDai FROM HoaDon WHERE MaDonHang = ?";
+    await myDb.query(getCouponCostQuery, [idOrder], (err, data) => {
+        if (err) {
+            return res.json(err);
+        }
+        return res.json(data);
+    })
+})
+// api for get list of available coupon for order
+app.get("/order/listCoupon/:idOrder", async (req, res) => {
+    const idOrder = req.params.idOrder;
+    myDb.query("CALL Lay_Uu_Dai_Cho_Don_Hang(?)", [idOrder], (error, results, fields) => {
+        if (error) {
+          console.error("Lỗi khi gọi thủ tục:", error);
+          res.status(500).send("Lỗi khi truy vấn cơ sở dữ liệu");
+        } else {
+          res.json(results[0]); 
+        }
+      });
+})
+// api for get most product sold in mm/yy
+app.get("/product/bestSeller/:type/:month/:year", async (req, res) => {
+    const type = req.params.type;
+    const month = req.params.month;
+    const year = req.params.year;
+    await myDb.query("CALL San_Pham_Ban_Chay_Nhat_Cua_Loai_Trong_Thang(?, ?, ?)", [type, month, year], (error, results) => {
+        if (error) {
+            console.error("Lỗi khi gọi thủ tục:", error);
+            res.status(500).send("Lỗi khi truy vấn cơ sở dữ liệu");
+          } else {
+            res.json(results[0]); 
+          }
+    })
+})
+// api for post coupon into system
+app.post("/adminCoupon/post", async (req, res) => {
+    const {MaUuDai, GiaTri, SoTienToiThieuApDung, SoTienToiDaApDung, SoLuongToiDaApDung, SoLuongConLai, NgayApDung, NgayHetHan, KieuUuDai, DieuKienQuyDoi} = req.body;
+    await myDb.query("CALL ThemUuDai(?, ?, ?, ?, ?, ? ,? ,? ,?, ?)", [MaUuDai, GiaTri, SoTienToiThieuApDung, SoTienToiDaApDung, SoLuongConLai, NgayApDung, NgayHetHan, SoLuongToiDaApDung, KieuUuDai, DieuKienQuyDoi], (err, data) => {
+        if (err) {
+            return res.json(err)
+        }
+        return res.json(data);
+    })
+})
+// api for get list of coupon for type
+app.get("/coupon/getType/:type", async (req, res) => {
+    const type = req.params.type;
+    if (type === "Tất cả") {
+        await myDb.query("SELECT * FROM UuDai LEFT JOIN UuDaiQuyDoi ON MaUuDai = MaUuDaiQuyDoi", [], (err, data) => {
+            if (err) {
+                return res.json(err);
+            }
+            return res.json(data);
+        })
+    }
+    else if (type === "Có sẵn") {
+        await myDb.query("SELECT * FROM UuDai WHERE SoTienToiThieuApDung IS NOT NULL AND SoTienToiDaApDung IS NOT NULL", [], (err, data) => {
+            if (err) {
+                return res.json(err);
+            }
+            return res.json(data);
+        })
+    }
+    else {
+        await myDb.query("SELECT * FROM UuDai JOIN UuDaiQuyDoi ON MaUuDai = MaUuDaiQuyDoi WHERE LoaiQuyDoi = ?", [type], (err, data) => {
+            if (err) {
+                return res.json(err);
+            }
+            return res.json(data);
+        })
+    }
+
+})
+// api for delete coupon
+app.delete("/coupon/delete1/:idCoupon", async (req, res) => {
+    const idCoupon = req.params.idCoupon;
+    await myDb.query("CALL XoaUuDai(?)", [idCoupon], (err, data) => {
+        if (err) {
+            return res.json(err)
+        }
+        return res.json(data)
+    })
+})
+// api for update coupon
+app.post("/coupon/update/:MaUuDai", async (req, res) => {
+    const {GiaTriCapNhat, SoTienToiThieuApDungCapNhat, SoTienToiDaApDungCapNhat, SoLuongConLaiCapNhat, NgayApDungCapNhat, NgayHetHanCapNhat, SoLuongToiDaApDungCapNhat} = req.body;
+    const MaUuDai = req.params.MaUuDai;
+    await myDb.query("CALL CapNhatUuDai(?, ?, ?, ?, ?, ?, ?, ?)", [MaUuDai, GiaTriCapNhat, SoTienToiThieuApDungCapNhat, SoTienToiDaApDungCapNhat, SoLuongConLaiCapNhat, NgayApDungCapNhat, NgayHetHanCapNhat, SoLuongToiDaApDungCapNhat], (err, data) => {
+        if (err) {return res.json(err)}
+        return res.json(data)
+    })
+})
 app.listen(PORT, () => {
     console.log('Project is running')
 })
+
 
 module.export = app;
