@@ -804,6 +804,42 @@ app.post("/coupon/update/:MaUuDai", async (req, res) => {
         return res.json(data)
     })
 })
+// api for give bestseller for product
+app.post("/product/giveBestller/:idProduct/:month", async (req, res) => {
+    const idProduct = req.params.idProduct;
+    const month = req.params.month;
+    const giveBestllerQuery = "UPDATE SanPham SET TenSP = CONCAT(TenSP, ' - Best seller tháng ', ?) WHERE MaSP = ?";
+    myDb.query(giveBestllerQuery, [month, idProduct], (err, data) => {
+        if (err) {
+            return res.json(err)
+        }
+        return res.json(data)
+    })
+})
+// api for delete a coupon of one user 
+app.delete("/coupon/user/:idCoupon/:userEmail", async (req, res) => {
+    const idCoupon = req.params.idCoupon;
+    const userEmail = req.params.userEmail;
+    const getIdOfCustomerQuery = "SELECT MaKH FROM KhachHang WHERE Email = ?";
+    try {
+        const result = await queryPromise(myDb, getIdOfCustomerQuery, [userEmail]);
+        if (result.length > 0) {
+            const idCustomer = result[0].MaKH;
+            await myDb.query("DELETE FROM UDThuocKH WHERE MaUuDai = ? AND MaKhachHang = ?", [idCoupon, idCustomer], (err, data) => {
+                if (err) {
+                    return res.json(err)
+                }
+                return res.json(data)
+            })
+        }
+        else {
+            return res.json({err: "Không có người dùng với email như vậy"})
+        }
+    }
+    catch(e) {
+        console.error(e)
+    }
+})
 app.listen(PORT, () => {
     console.log('Project is running')
 })
